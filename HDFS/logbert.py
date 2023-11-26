@@ -65,7 +65,7 @@ options["cuda_devices"] = None
 options["log_freq"] = None
 
 # predict
-options["num_candidates"] = 20
+options["num_candidates"] = 5
 options["gaussian_mean"] = 0
 options["gaussian_std"] = 1
 

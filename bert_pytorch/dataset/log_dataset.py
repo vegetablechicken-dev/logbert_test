@@ -35,9 +35,12 @@ class LogDataset(Dataset):
     def __getitem__(self, idx):
         # 会先获取日志和时间戳数据，随后会进行mask操作，并生成相应的标签序列
         # 在序列的开头插入SOS（Start of Sequence）标记。返回日志文本、日志标签、时间戳文本和时间戳标签
+        # 在预测阶段的数据加载中，我们不对序列进行掩码处理，转而在与预测时进行处理
         k, t = self.log_corpus[idx], self.time_corpus[idx]
-
-        k_masked, k_label, t_masked, t_label = self.random_item(k, t)
+        if self.predict_mode:
+            k_masked, k_label, t_masked, t_label = self.predict_item(k, t)
+        else:
+            k_masked, k_label, t_masked, t_label = self.random_item(k, t)
 
         # [CLS] tag = SOS tag, [SEP] tag = EOS tag
         k = [self.vocab.sos_index] + k_masked
@@ -52,6 +55,7 @@ class LogDataset(Dataset):
     # random_item方法根据指定的掩码比例随机替换日志文本中的标记，生成掩码后的文本和相应的标签
     # 根据predict_mode参数，它可以生成用于预测的数据或用于训练的数据
     # 下面的time_lable就表示当前token是否被掩码了
+    # label保存被掩码替换掉token，如果label对应值为0，则该token没有被mask
     def random_item(self, k, t):
         tokens = list(k)
         output_label = []
@@ -97,6 +101,16 @@ class LogDataset(Dataset):
                 tokens[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
                 output_label.append(0)
                 time_label.append(0)
+
+        return tokens, output_label, time_intervals, time_label
+
+    def predict_item(self, k, t):
+        tokens = list(k)
+        for i, token in enumerate(tokens):
+            tokens[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
+        output_label = [0] * len(tokens)
+        time_intervals = list(t)
+        time_masked = [0] * len(tokens)
 
         return tokens, output_label, time_intervals, time_label
 

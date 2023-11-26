@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pickle
 import time
 import torch
+import math
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
@@ -79,16 +80,30 @@ class Predictor():
         self.test_ratio = options["test_ratio"]
         self.mask_ratio = options["mask_ratio"]
         self.min_len=options["min_len"]
+        self.key_dict = {}
+        self.seqs_to_keys = {}
+        self.seqs_dict_idx = 0
 
+        self.abnormal_loss_bond = 0.95
+        self.abnormal_prob_bond = 0.05
+    '''
+    修改此处
+    original method(logbert): 如果不在候选集中前g个(num_candidates),则为异常
+    change:
+    '''
     def detect_logkey_anomaly(self, masked_output, masked_label):
         num_undetected_tokens = 0
         output_maskes = []
+        '''
         for i, token in enumerate(masked_label):
             # output_maskes.append(torch.argsort(-masked_output[i])[:30].cpu().numpy()) # extract top 30 candidates for mask labels
 
-            if token not in torch.argsort(-masked_output[i])[:self.num_candidates]:
-                num_undetected_tokens += 1
-
+            # if token not in torch.argsort(-masked_output[i])[:self.num_candidates]:
+                # num_undetected_tokens += 1
+            if token not in self.key_dict:
+                score_loss, score_prob = 0, 0
+                for 
+        '''
         return num_undetected_tokens, [output_maskes, masked_label.cpu().numpy()]
 
     @staticmethod
@@ -151,16 +166,47 @@ class Predictor():
                                  corpus_lines=self.corpus_lines, on_memory=self.on_memory, predict_mode=True, mask_ratio=self.mask_ratio)
 
         # use large batch size in test data
-        data_loader = DataLoader(seq_dataset, batch_size=self.batch_size, num_workers=self.num_workers,
+        data_loader = DataLoader(seq_dataset, batch_size=1, num_workers=self.num_workers,
                                  collate_fn=seq_dataset.collate_fn)
         idx = 0
         for idx, data in tqdm(enumerate(data_loader)):
             idx += 1
             if idx > 100:
                 break
-            data = {key: value.to(self.device) for key, value in data.items()}
-
-            result = model(data["bert_input"], data["time_input"])
+            # data = {key: value.to(self.device) for key, value in data.items()}
+            data_dict = {}
+            log_input = data["bert_input"]
+            time_input = data["time_input"]
+            
+            if log_input in seqs_to_keys.values():
+                key_of_seqs = seqs_to_keys.get(log_input)
+                log_loss, log_prob = key_dict[key_of_seqs][0], key_dict[key_of_seqs][1]
+            else:
+                score_loss, score_prob = [], []
+                score_loss.to(device)
+                score_prob.to(device)
+                log_input.to(device)
+                time_input.to(device)
+                for i in range(1, len(log_input)):
+                    log_label, log_input[0, i] = log_input[0, i], 4
+                    time_label, time_input[0, i] = time_input[0, i], 0
+                    result = model(log_input, time_input)
+                    mask_lm_output, mask_tm_output = result["logkey_output"], result["time_output"]
+                    prob, loss = mask_lm_output[0, log_label], -1 * log(mask_lm_output[0, log_label])
+                    score_loss.append(loss)
+                    score_prob.append(prob)
+                score_loss, _ = torch.sort(torch.tensor(score_loss).float(), descending=True)
+                score_prob, _ = torch.sort(torch.tensor(score_prob).float(), descending=True)
+                abnormal_loss, abnormal_prob = torch.mean(score_loss[:self.num_candidates]).item(), torch.mean(score_prob[:self.num_candidates]).item()
+                seqs_to_keys[seqs_dict_idx] = log_input
+                key_dict[seqs_dict_idx] = [abnormal_loss, abnormal_prob]
+                log_loss, log_prob = abnormal_loss, abnormal_prob
+                seqs_dict_idx += 1
+            if log_loss > self.abnormal_loss_bond or log_prob < self.abnormal_prob_bond:
+                # TODO
+                output.append()
+'''
+            result = model(data_dict["bert_input"], data_dict["time_input"])
 
             # mask_lm_output, mask_tm_output: batch_size x session_size x vocab_size
             # cls_output: batch_size x hidden_size
@@ -175,21 +221,21 @@ class Predictor():
             # continue
 
             # loop though each session in batch
-            for i in range(len(data["bert_label"])-1):
+            for i in range(len(data_dict["bert_label"])-1):
                 seq_results = {"num_error": 0,
                                "undetected_tokens": 0,
                                "masked_tokens": 0,
-                               "total_logkey": torch.sum(data["bert_input"][i] > 0).item(),
+                               "total_logkey": torch.sum(data_dict["bert_input"][i] > 0).item(),
                                "deepSVDD_label": 0
                                }
 
-                mask_index = data["bert_label"][i] > 0
+                mask_index = data_dict["bert_label"][i] > 0
                 num_masked = torch.sum(mask_index).tolist()
                 seq_results["masked_tokens"] = num_masked
 
                 if self.is_logkey:
                     num_undetected, output_seq = self.detect_logkey_anomaly(
-                        mask_lm_output[i][mask_index], data["bert_label"][i][mask_index])
+                        mask_lm_output[i][mask_index], data_dict["bert_label"][i][mask_index])
                     seq_results["undetected_tokens"] = num_undetected
 
                     output_results.append(output_seq)
@@ -220,7 +266,7 @@ class Predictor():
                         )
                     )
                 total_results.append(seq_results)
-                
+'''   
         return total_results, output_results
 
         # for time
@@ -233,6 +279,7 @@ class Predictor():
         # return total_results, output_cls
 
     def predict(self):
+        # 加载模型
         model = torch.load(self.model_path)
         model.to(self.device)
         model.eval()
