@@ -18,10 +18,11 @@ def compute_anomaly(results, params, seq_threshold):
     is_logkey = params["is_logkey"]
     is_time = params["is_time"]
     total_errors = 0
-    for seq_res in results:
-        # label pairs as anomaly when over half of masked tokens are undetected
-        if (is_logkey and seq_res["undetected_tokens"] > seq_res["masked_tokens"] * seq_threshold):
-            total_errors += 1
+    # 建议根据情况修改
+    abnormal_loss_bond, abnormal_prob_bond = 0.95, 0.05
+    for key, value in results[0]:
+        if results[1][key][0] > abnormal_loss_bond or results[1][key][1] < abnormal_prob_bond:
+            total_error += 1
     return total_errors
 
 
@@ -34,8 +35,8 @@ def find_best_threshold(test_normal_results, test_abnormal_results, params, th_r
         if TP == 0:
             continue
 
-        TN = len(test_normal_results) - FP
-        FN = len(test_abnormal_results) - TP
+        TN = len(test_normal_results[0]) - FP
+        FN = len(test_abnormal_results[0]) - TP
         P = 100 * TP / (TP + FP)
         R = 100 * TP / (TP + FN)
         F1 = 2 * P * R / (P + R)
@@ -146,6 +147,9 @@ class Predictor():
         return log_seqs, tim_seqs
 
     def helper(self, model, output_dir, file_name, vocab, scale=None, error_dict=None):
+        self.key_dict = {}
+        self.seqs_to_keys = {}
+        self.seqs_dict_idx = 0
         total_results = []
         total_errors = []
         output_results = []
@@ -202,72 +206,9 @@ class Predictor():
                 key_dict[seqs_dict_idx] = [abnormal_loss, abnormal_prob]
                 log_loss, log_prob = abnormal_loss, abnormal_prob
                 seqs_dict_idx += 1
-            if log_loss > self.abnormal_loss_bond or log_prob < self.abnormal_prob_bond:
-                # TODO
-                output.append()
-'''
-            result = model(data_dict["bert_input"], data_dict["time_input"])
+            output_results = []
 
-            # mask_lm_output, mask_tm_output: batch_size x session_size x vocab_size
-            # cls_output: batch_size x hidden_size
-            # bert_label, time_label: batch_size x session_size
-            # in session, some logkeys are masked
-
-            mask_lm_output, mask_tm_output = result["logkey_output"], result["time_output"]
-            output_cls += result["cls_output"].tolist()
-
-            # dist = torch.sum((result["cls_output"] - self.hyper_center) ** 2, dim=1)
-            # when visualization no mask
-            # continue
-
-            # loop though each session in batch
-            for i in range(len(data_dict["bert_label"])-1):
-                seq_results = {"num_error": 0,
-                               "undetected_tokens": 0,
-                               "masked_tokens": 0,
-                               "total_logkey": torch.sum(data_dict["bert_input"][i] > 0).item(),
-                               "deepSVDD_label": 0
-                               }
-
-                mask_index = data_dict["bert_label"][i] > 0
-                num_masked = torch.sum(mask_index).tolist()
-                seq_results["masked_tokens"] = num_masked
-
-                if self.is_logkey:
-                    num_undetected, output_seq = self.detect_logkey_anomaly(
-                        mask_lm_output[i][mask_index], data_dict["bert_label"][i][mask_index])
-                    seq_results["undetected_tokens"] = num_undetected
-
-                    output_results.append(output_seq)
-
-                # if self.hypersphere_loss_test:
-                #     # detect by deepSVDD distance
-                #     assert result["cls_output"][i].size() == self.center.size()
-                #     # dist = torch.sum((result["cls_fnn_output"][i] - self.center) ** 2)
-                #     dist = torch.sqrt(torch.sum((result["cls_output"][i] - self.center) ** 2))
-                #     total_dist.append(dist.item())
-
-                #     # user defined threshold for deepSVDD_label
-                #     seq_results["deepSVDD_label"] = int(dist.item() > self.radius)
-                #     #
-                #     # if dist > 0.25:
-                #     #     pass
-
-                if idx < 10 or idx % 10000 == 0:
-                    print(
-                        "{}, #time anomaly: {} # of undetected_tokens: {}, # of masked_tokens: {} , "
-                        "# of total logkey {}, deepSVDD_label: {} \n".format(
-                            file_name,
-                            seq_results["num_error"],
-                            seq_results["undetected_tokens"],
-                            seq_results["masked_tokens"],
-                            seq_results["total_logkey"],
-                            seq_results['deepSVDD_label']
-                        )
-                    )
-                total_results.append(seq_results)
-'''   
-        return total_results, output_results
+        return [self.seqs_to_keys, self.key_dict], output_results
 
         # for time
         # return total_results, total_errors
