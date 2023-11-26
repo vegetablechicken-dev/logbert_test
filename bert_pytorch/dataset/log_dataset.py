@@ -33,6 +33,8 @@ class LogDataset(Dataset):
         return self.corpus_lines
 
     def __getitem__(self, idx):
+        # 会先获取日志和时间戳数据，随后会进行mask操作，并生成相应的标签序列
+        # 在序列的开头插入SOS（Start of Sequence）标记。返回日志文本、日志标签、时间戳文本和时间戳标签
         k, t = self.log_corpus[idx], self.time_corpus[idx]
 
         k_masked, k_label, t_masked, t_label = self.random_item(k, t)
@@ -47,6 +49,9 @@ class LogDataset(Dataset):
 
         return k, k_label, t, t_label
 
+    # random_item方法根据指定的掩码比例随机替换日志文本中的标记，生成掩码后的文本和相应的标签
+    # 根据predict_mode参数，它可以生成用于预测的数据或用于训练的数据
+    # 下面的time_lable就表示当前token是否被掩码了
     def random_item(self, k, t):
         tokens = list(k)
         output_label = []

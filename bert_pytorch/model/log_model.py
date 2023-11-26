@@ -58,6 +58,7 @@ class TimeLogModel(nn.Module):
     def __init__(self, hidden, time_size=1):
         super().__init__()
         self.linear = nn.Linear(hidden, time_size)
+        # 只有0-1两种状态
 
     def forward(self, x):
         return self.linear(x)

@@ -40,17 +40,21 @@ class BERTTrainer:
 
         # Setup cuda device for BERT training, argument -c, --cuda should be true
         cuda_condition = torch.cuda.is_available() and with_cuda
-        self.device = torch.device("cuda:0" if cuda_condition else "cpu")
+        self.device = torch.device("cuda:2" if cuda_condition else "cpu")
 
         # This BERT model will be saved every epoch
         self.bert = bert
         # Initialize the BERT Language Model, with BERT model
         self.model = BERTLog(bert, vocab_size).to(self.device)
 
+
+
         # Distributed GPU training if CUDA can detect more than 1 GPU
-        # if with_cuda and torch.cuda.device_count() > 1:
-        #     print("Using %d GPUS for BERT" % torch.cuda.device_count())
-        #     self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
+        # 尝试并行计算
+        if with_cuda and torch.cuda.device_count() > 1:
+            print("Using %d GPUS for BERT" % torch.cuda.device_count())
+            self.model = nn.DataParallel(self.model, device_ids=[2,6])
+      
 
         # Setting the train and valid data loader
         self.train_data = train_dataloader
@@ -132,8 +136,10 @@ class BERTTrainer:
 
         total_dist = []
         for i, data in data_iter:
+            # TODO:新加的
+            # data.to(self.device)
             data = {key: value.to(self.device) for key, value in data.items()}
-
+            
             result = self.model.forward(data["bert_input"], data["time_input"])
             mask_lm_output, mask_time_output = result["logkey_output"], result["time_output"]
 

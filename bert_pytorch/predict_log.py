@@ -13,15 +13,13 @@ from bert_pytorch.dataset import LogDataset
 from bert_pytorch.dataset.sample import fixed_window
 
 
-def compute_anomaly(results, params, seq_threshold=0.5):
+def compute_anomaly(results, params, seq_threshold):
     is_logkey = params["is_logkey"]
     is_time = params["is_time"]
     total_errors = 0
     for seq_res in results:
         # label pairs as anomaly when over half of masked tokens are undetected
-        if (is_logkey and seq_res["undetected_tokens"] > seq_res["masked_tokens"] * seq_threshold) or \
-                (is_time and seq_res["num_error"]> seq_res["masked_tokens"] * seq_threshold) or \
-                (params["hypersphere_loss_test"] and seq_res["deepSVDD_label"]):
+        if (is_logkey and seq_res["undetected_tokens"] > seq_res["masked_tokens"] * seq_threshold):
             total_errors += 1
     return total_errors
 
@@ -31,7 +29,7 @@ def find_best_threshold(test_normal_results, test_abnormal_results, params, th_r
     for seq_th in seq_range:
         FP = compute_anomaly(test_normal_results, params, seq_th)
         TP = compute_anomaly(test_abnormal_results, params, seq_th)
-
+        
         if TP == 0:
             continue
 
@@ -40,7 +38,9 @@ def find_best_threshold(test_normal_results, test_abnormal_results, params, th_r
         P = 100 * TP / (TP + FP)
         R = 100 * TP / (TP + FN)
         F1 = 2 * P * R / (P + R)
-
+        print("seq_th:",seq_th)
+        print("TP: {}, TN: {}, FP: {}, FN: {}".format(TP, TN, FP, FN))
+        print('Precision: {:.2f}%, Recall: {:.2f}%, F1-measure: {:.2f}%'.format(P, R, F1))
         if F1 > best_result[-1]:
             best_result = [0, seq_th, FP, TP, TN, FN, P, R, F1]
     return best_result
@@ -100,7 +100,7 @@ class Predictor():
         tim_seqs = []
         with open(output_dir + file_name, "r") as f:
             for idx, line in tqdm(enumerate(f.readlines())):
-                #if idx > 40: break
+                # if idx > 12000: break
                 log_seq, tim_seq = fixed_window(line, window_size,
                                                 adaptive_window=adaptive_window,
                                                 seq_len=seq_len, min_len=min_len)
@@ -142,7 +142,8 @@ class Predictor():
         if self.test_ratio != 1:
             num_test = len(logkey_test)
             rand_index = torch.randperm(num_test)
-            rand_index = rand_index[:int(num_test * self.test_ratio)] if isinstance(self.test_ratio, float) else rand_index[:self.test_ratio]
+            rand_index = rand_index[:int(num_test * 0.1)] if isinstance(self.test_ratio, float) else rand_index[:self.test_ratio]
+            print(rand_index.shape)
             logkey_test, time_test = logkey_test[rand_index], time_test[rand_index]
 
 
@@ -152,8 +153,11 @@ class Predictor():
         # use large batch size in test data
         data_loader = DataLoader(seq_dataset, batch_size=self.batch_size, num_workers=self.num_workers,
                                  collate_fn=seq_dataset.collate_fn)
-
-        for idx, data in enumerate(data_loader):
+        idx = 0
+        for idx, data in tqdm(enumerate(data_loader)):
+            idx += 1
+            if idx > 100:
+                break
             data = {key: value.to(self.device) for key, value in data.items()}
 
             result = model(data["bert_input"], data["time_input"])
@@ -171,7 +175,7 @@ class Predictor():
             # continue
 
             # loop though each session in batch
-            for i in range(len(data["bert_label"])):
+            for i in range(len(data["bert_label"])-1):
                 seq_results = {"num_error": 0,
                                "undetected_tokens": 0,
                                "masked_tokens": 0,
@@ -190,20 +194,20 @@ class Predictor():
 
                     output_results.append(output_seq)
 
-                if self.hypersphere_loss_test:
-                    # detect by deepSVDD distance
-                    assert result["cls_output"][i].size() == self.center.size()
-                    # dist = torch.sum((result["cls_fnn_output"][i] - self.center) ** 2)
-                    dist = torch.sqrt(torch.sum((result["cls_output"][i] - self.center) ** 2))
-                    total_dist.append(dist.item())
+                # if self.hypersphere_loss_test:
+                #     # detect by deepSVDD distance
+                #     assert result["cls_output"][i].size() == self.center.size()
+                #     # dist = torch.sum((result["cls_fnn_output"][i] - self.center) ** 2)
+                #     dist = torch.sqrt(torch.sum((result["cls_output"][i] - self.center) ** 2))
+                #     total_dist.append(dist.item())
 
-                    # user defined threshold for deepSVDD_label
-                    seq_results["deepSVDD_label"] = int(dist.item() > self.radius)
-                    #
-                    # if dist > 0.25:
-                    #     pass
+                #     # user defined threshold for deepSVDD_label
+                #     seq_results["deepSVDD_label"] = int(dist.item() > self.radius)
+                #     #
+                #     # if dist > 0.25:
+                #     #     pass
 
-                if idx < 10 or idx % 1000 == 0:
+                if idx < 10 or idx % 10000 == 0:
                     print(
                         "{}, #time anomaly: {} # of undetected_tokens: {}, # of masked_tokens: {} , "
                         "# of total logkey {}, deepSVDD_label: {} \n".format(
@@ -216,15 +220,17 @@ class Predictor():
                         )
                     )
                 total_results.append(seq_results)
+                
+        return total_results, output_results
 
         # for time
         # return total_results, total_errors
 
         #for logkey
-        # return total_results, output_results
+    
 
         # for hypersphere distance
-        return total_results, output_cls
+        # return total_results, output_cls
 
     def predict(self):
         model = torch.load(self.model_path)
@@ -252,11 +258,15 @@ class Predictor():
 
 
         print("test normal predicting")
-        test_normal_results, test_normal_errors = self.helper(model, self.output_dir, "test_normal", vocab, scale, error_dict)
-
+        test_normal_results, test_normal_errors = self.helper(model, self.output_dir, "log_normal", vocab, scale, error_dict)
+        
+        print("#############")
+        print(test_normal_results)
         print("test abnormal predicting")
-        test_abnormal_results, test_abnormal_errors = self.helper(model, self.output_dir, "test_abnormal", vocab, scale, error_dict)
-
+        test_abnormal_results, test_abnormal_errors = self.helper(model, self.output_dir, "log_anormaly", vocab, scale, error_dict)
+        
+        print("##############")
+        print(test_abnormal_results)
         print("Saving test normal results")
         with open(self.model_dir + "test_normal_results", "wb") as f:
             pickle.dump(test_normal_results, f)
@@ -286,5 +296,4 @@ class Predictor():
         print('Precision: {:.2f}%, Recall: {:.2f}%, F1-measure: {:.2f}%'.format(P, R, F1))
         elapsed_time = time.time() - start_time
         print('elapsed_time: {}'.format(elapsed_time))
-
 

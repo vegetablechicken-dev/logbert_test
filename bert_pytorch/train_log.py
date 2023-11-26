@@ -59,7 +59,7 @@ class Trainer():
         print("vocab Size: ", len(vocab))
 
         print("\nLoading Train Dataset")
-        logkey_train, logkey_valid, time_train, time_valid = generate_train_valid(self.output_path + "train", window_size=self.window_size,
+        logkey_train, logkey_valid, time_train, time_valid = generate_train_valid(self.output_path + "log_normal", window_size=self.window_size,
                                      adaptive_window=self.adaptive_window,
                                      valid_size=self.valid_ratio,
                                      sample_ratio=self.sample_ratio,
@@ -68,7 +68,7 @@ class Trainer():
                                      seq_len=self.seq_len,
                                      min_len=self.min_len
                                     )
-
+        # 为日志数据和时间戳数据加一些 掩码标志
         train_dataset = LogDataset(logkey_train,time_train, vocab, seq_len=self.seq_len,
                                     corpus_lines=self.corpus_lines, on_memory=self.on_memory, mask_ratio=self.mask_ratio)
 
@@ -101,7 +101,7 @@ class Trainer():
                               lr=self.lr, betas=(self.adam_beta1, self.adam_beta2), weight_decay=self.adam_weight_decay,
                               with_cuda=self.with_cuda, cuda_devices=self.cuda_devices, log_freq=self.log_freq,
                               is_logkey=self.is_logkey, is_time=self.is_time,
-                              hypersphere_loss=self.hypersphere_loss)
+                              hypersphere_loss=False)
 
         self.start_iteration(surfix_log="log2")
 
@@ -114,14 +114,17 @@ class Trainer():
         # best_center = None
         # best_radius = 0
         # total_dist = None
+        self.hypersphere_loss = False
         for epoch in range(self.epochs):
             print("\n")
-            if self.hypersphere_loss:
-                center = self.calculate_center([self.train_data_loader, self.valid_data_loader])
-                # center = self.calculate_center([self.train_data_loader])
-                self.trainer.hyper_center = center
+            # if self.hypersphere_loss:
+            #     center = self.calculate_center([self.train_data_loader, self.valid_data_loader])
+            #     # center = self.calculate_center([self.train_data_loader])
+            #     print("###########\n")
+            #     self.trainer.hyper_center = center
 
             _, train_dist = self.trainer.train(epoch)
+            print("###########\n")
             avg_loss, valid_dist = self.trainer.valid(epoch)
             self.trainer.save_log(self.model_dir, surfix_log)
 

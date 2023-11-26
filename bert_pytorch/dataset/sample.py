@@ -58,6 +58,7 @@ def fixed_window(line, window_size, adaptive_window, seq_len=None, min_len=0):
 def generate_train_valid(data_path, window_size=20, adaptive_window=True,
                          sample_ratio=1, valid_size=0.1, output_path=None,
                          scale=None, scale_path=None, seq_len=None, min_len=0):
+    
     with open(data_path, 'r') as f:
         data_iter = f.readlines()
 
@@ -82,10 +83,15 @@ def generate_train_valid(data_path, window_size=20, adaptive_window=True,
         if session >= num_session:
             break
         session += 1
-
+        # print(line)
         logkeys, times = fixed_window(line, window_size, adaptive_window, seq_len, min_len)
         logkey_seq_pairs += logkeys
         time_seq_pairs += times
+        
+    print("logkey_seq_pairs:",logkey_seq_pairs[1])
+    print("time_seq_pairs:",time_seq_pairs[1])
+    # logkey_seq_pairs: ['1' '1' '1' '7' '3' '4' '3' '4' '3' '4' '2' '2' '2' '6' '6' '6' '5' '5' '5']
+    # time_seq_pairs: [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]
 
     logkey_seq_pairs = np.array(logkey_seq_pairs)
     time_seq_pairs = np.array(time_seq_pairs)
