@@ -110,7 +110,7 @@ class LogDataset(Dataset):
             tokens[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
         output_label = [0] * len(tokens)
         time_intervals = list(t)
-        time_masked = [0] * len(tokens)
+        time_label = [0] * len(tokens)
 
         return tokens, output_label, time_intervals, time_label
 

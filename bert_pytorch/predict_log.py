@@ -147,9 +147,9 @@ class Predictor():
         return log_seqs, tim_seqs
 
     def helper(self, model, output_dir, file_name, vocab, scale=None, error_dict=None):
-        self.key_dict = {}
-        self.seqs_to_keys = {}
-        self.seqs_dict_idx = 0
+        key_dict = {}
+        seqs_to_keys = {}
+        seqs_dict_idx = 0
         total_results = []
         total_errors = []
         output_results = []
@@ -187,10 +187,8 @@ class Predictor():
                 log_loss, log_prob = key_dict[key_of_seqs][0], key_dict[key_of_seqs][1]
             else:
                 score_loss, score_prob = [], []
-                score_loss.to(device)
-                score_prob.to(device)
-                log_input.to(device)
-                time_input.to(device)
+                # log_input.to(device)
+                # time_input.to(device)
                 for i in range(1, len(log_input)):
                     log_label, log_input[0, i] = log_input[0, i], 4
                     time_label, time_input[0, i] = time_input[0, i], 0
